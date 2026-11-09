@@ -66,12 +66,14 @@ def contains_path_traversal(value: str) -> bool:
         ``True`` if the path would escape its starting directory.
     """
     depth = 0
-    for part in value.replace("\\", "/").split("/"):
-        if part == "..":
+    norm = value.replace("%2f", "/").replace("%2F", "/").replace("%5c", "/").replace("%5C", "/")
+    for part in norm.replace("\\", "/").split("/"):
+        p_lower = part.lower()
+        if p_lower in ("..", "%2e%2e", ".%2e", "%2e."):
             depth -= 1
             if depth < 0:
                 return True
-        elif part and part != ".":
+        elif part and p_lower not in (".", "%2e"):
             depth += 1
     return False
 
@@ -107,6 +109,8 @@ def is_absolute_path(value: str) -> bool:
     if not value:
         return False
     if value[0] in ("/", "\\"):
+        return True
+    if value.lower().startswith(("file://", "file:/")):
         return True
     # Windows drive form: C:, C:\, C:foo (drive-relative). A drive-
     # relative right-hand side discards the join base when drives
@@ -161,7 +165,7 @@ def safe_join(base: str | Path, *parts: str) -> Path:
         # Null bytes pass through Path construction but fail at the
         # syscall boundary with a cryptic error. Reject here so callers
         # get a clear PathEscapeError instead.
-        if "\0" in part:
+        if "\0" in part or "%00" in part.lower():
             raise PathEscapeError(f"Path component contains a null byte; refusing to join onto {base_resolved}")
         # Absolute parts would silently discard everything to the left
         # in Path's / operator.
