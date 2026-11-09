@@ -43,6 +43,13 @@ from mcp.shared.path_security import (
         ("a\\b\\c", False),
         # Mixed separators
         ("a/..\\..\\b", True),
+        # Percent-encoded traversal
+        ("%2e%2e/etc", True),
+        ("%2e%2e%2fetc", True),
+        ("..%2fetc", True),
+        ("a/%2e%2e/%2e%2e/b", True),
+        ("%2E%2E/etc", True),
+        ("a/%2e/b", False),
     ],
 )
 def test_contains_path_traversal(value: str, expected: bool):
@@ -81,6 +88,10 @@ def test_contains_path_traversal(value: str, expected: bool):
         # Non-ASCII letter is not a drive letter
         ("Ω:namespace", False),
         ("é:foo", False),
+        # File URI scheme
+        ("file:///etc/passwd", True),
+        ("file:/etc/passwd", True),
+        ("file://C:/Windows", True),
     ],
 )
 def test_is_absolute_path(value: str, expected: bool):
@@ -165,3 +176,8 @@ def test_safe_join_base_equals_target(tmp_path: Path):
 def test_path_escape_error_is_value_error():
     with pytest.raises(ValueError):
         safe_join("/tmp", "/etc")
+
+def test_safe_join_rejects_url_encoded_null_byte(tmp_path: Path):
+    with pytest.raises(PathEscapeError, match="null byte"):
+        safe_join(tmp_path, "file%00.txt")
+
