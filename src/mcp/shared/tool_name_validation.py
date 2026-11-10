@@ -48,6 +48,13 @@ def validate_tool_name(name: str) -> ToolNameValidationResult:
     """
     warnings: list[str] = []
 
+    # Type check guard
+    if not isinstance(name, str):
+        return ToolNameValidationResult(
+            is_valid=False,
+            warnings=[f"Tool name must be a string, got {type(name).__name__}"],
+        )
+
     # Check for empty name
     if not name:
         return ToolNameValidationResult(
@@ -68,6 +75,12 @@ def validate_tool_name(name: str) -> ToolNameValidationResult:
 
     if "," in name:
         warnings.append("Tool name contains commas, which may cause parsing issues")
+
+    if name != name.strip():
+        warnings.append("Tool name contains leading or trailing whitespace, which may cause parsing issues")
+
+    if "\x00" in name:
+        warnings.append("Tool name contains null bytes, which may cause security or parsing issues")
 
     # Check for potentially confusing leading/trailing characters
     if name.startswith("-") or name.endswith("-"):

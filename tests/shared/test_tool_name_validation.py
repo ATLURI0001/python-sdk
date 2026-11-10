@@ -211,3 +211,28 @@ def test_edge_cases(tool_name: str, is_valid: bool, expected_warning_fragment: s
     result = validate_tool_name(tool_name)
     assert result.is_valid is is_valid
     assert any(expected_warning_fragment in w for w in result.warnings)
+
+
+def test_validate_tool_name_rejects_non_string() -> None:
+    """Non-string inputs should be rejected safely without throwing exceptions."""
+    result = validate_tool_name(12345)  # type: ignore
+    assert result.is_valid is False
+    assert "Tool name must be a string, got int" in result.warnings[0]
+
+    result_none = validate_tool_name(None)  # type: ignore
+    assert result_none.is_valid is False
+    assert "Tool name must be a string, got NoneType" in result_none.warnings[0]
+
+
+def test_validate_tool_name_warns_on_leading_or_trailing_whitespace() -> None:
+    """Tool names with whitespace padding should trigger specific warnings."""
+    result = validate_tool_name(" my_tool ")
+    assert result.is_valid is False
+    assert any("leading or trailing whitespace" in w for w in result.warnings)
+
+
+def test_validate_tool_name_warns_on_null_byte() -> None:
+    """Tool names containing null bytes should trigger specific warnings."""
+    result = validate_tool_name("my\x00tool")
+    assert result.is_valid is False
+    assert any("null bytes" in w for w in result.warnings)
