@@ -50,6 +50,11 @@ from mcp.shared.path_security import (
         ("a/%2e%2e/%2e%2e/b", True),
         ("%2E%2E/etc", True),
         ("a/%2e/b", False),
+        # Double percent-encoded traversal
+        ("%252e%252e%252fetc", True),
+        ("%252e%252e/etc", True),
+        ("%2e%2e%252fetc", True),
+        ("%252e%252e%255cetc", True),
     ],
 )
 def test_contains_path_traversal(value: str, expected: bool):
@@ -92,6 +97,12 @@ def test_contains_path_traversal(value: str, expected: bool):
         ("file:///etc/passwd", True),
         ("file:/etc/passwd", True),
         ("file://C:/Windows", True),
+        # Leading whitespace and percent-encoded absolute paths
+        (" /etc/passwd", True),
+        ("  file:///etc/passwd", True),
+        ("%2fetc/passwd", True),
+        ("%252fetc/passwd", True),
+        ("%5cWindows\\System32", True),
     ],
 )
 def test_is_absolute_path(value: str, expected: bool):
@@ -180,4 +191,9 @@ def test_path_escape_error_is_value_error():
 def test_safe_join_rejects_url_encoded_null_byte(tmp_path: Path):
     with pytest.raises(PathEscapeError, match="null byte"):
         safe_join(tmp_path, "file%00.txt")
+
+
+def test_safe_join_rejects_double_encoded_null_byte(tmp_path: Path):
+    with pytest.raises(PathEscapeError, match="null byte"):
+        safe_join(tmp_path, "file%2500.txt")
 
