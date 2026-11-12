@@ -17,8 +17,22 @@ The canonical safe pattern::
 
 import string
 from pathlib import Path
+from urllib.parse import unquote
 
 __all__ = ["PathEscapeError", "contains_path_traversal", "is_absolute_path", "safe_join"]
+
+
+def _unquote_iterative(value: str, max_passes: int = 3) -> str:
+    """Decode percent-encoded sequences iteratively up to ``max_passes`` times."""
+    current = value
+    for _ in range(max_passes):
+        if "%" not in current:
+            break
+        decoded = unquote(current)
+        if decoded == current:
+            break
+        current = decoded
+    return current
 
 
 class PathEscapeError(ValueError):
@@ -66,7 +80,8 @@ def contains_path_traversal(value: str) -> bool:
         ``True`` if the path would escape its starting directory.
     """
     depth = 0
-    norm = value.replace("%2f", "/").replace("%2F", "/").replace("%5c", "/").replace("%5C", "/")
+    norm = _unquote_iterative(value)
+    norm = norm.replace("%2f", "/").replace("%2F", "/").replace("%5c", "/").replace("%5C", "/")
     for part in norm.replace("\\", "/").split("/"):
         p_lower = part.lower()
         if p_lower in ("..", "%2e%2e", ".%2e", "%2e."):
@@ -108,17 +123,20 @@ def is_absolute_path(value: str) -> bool:
     """
     if not value:
         return False
-    if value[0] in ("/", "\\"):
-        return True
-    if value.lower().startswith(("file://", "file:/")):
-        return True
-    # Windows drive form: C:, C:\, C:foo (drive-relative). A drive-
-    # relative right-hand side discards the join base when drives
-    # differ, so flag it even though PureWindowsPath.is_absolute()
-    # is False. This means single-letter-prefixed identifiers like
-    # "x:y" also match — opt out via ResourceSecurity(exempt_params=).
-    if len(value) >= 2 and value[1] == ":" and value[0] in string.ascii_letters:
-        return True
+    for candidate in (value, value.lstrip(), _unquote_iterative(value.lstrip())):
+        if not candidate:
+            continue
+        if candidate[0] in ("/", "\\"):
+            return True
+        if candidate.lower().startswith(("file://", "file:/")):
+            return True
+        # Windows drive form: C:, C:\, C:foo (drive-relative). A drive-
+        # relative right-hand side discards the join base when drives
+        # differ, so flag it even though PureWindowsPath.is_absolute()
+        # is False. This means single-letter-prefixed identifiers like
+        # "x:y" also match — opt out via ResourceSecurity(exempt_params=).
+        if len(candidate) >= 2 and candidate[1] == ":" and candidate[0] in string.ascii_letters:
+            return True
     return False
 
 
@@ -165,7 +183,7 @@ def safe_join(base: str | Path, *parts: str) -> Path:
         # Null bytes pass through Path construction but fail at the
         # syscall boundary with a cryptic error. Reject here so callers
         # get a clear PathEscapeError instead.
-        if "\0" in part or "%00" in part.lower():
+        if "\0" in part or "%00" in part.lower() or "\0" in _unquote_iterative(part):
             raise PathEscapeError(f"Path component contains a null byte; refusing to join onto {base_resolved}")
         # Absolute parts would silently discard everything to the left
         # in Path's / operator.
