@@ -121,3 +121,25 @@ def test_check_resource_allowed_empty_paths():
     assert check_resource_allowed("https://example.com", "https://example.com") is True
     assert check_resource_allowed("https://example.com/", "https://example.com") is True
     assert check_resource_allowed("https://example.com/api", "https://example.com") is True
+
+
+def test_check_resource_allowed_rejects_traversal_and_relative_urls():
+    """Dot-segment traversal, fragments, and non-absolute URLs must be rejected."""
+    import pytest
+
+    from mcp.shared.auth_utils import calculate_token_expiry
+
+    assert check_resource_allowed("https://example.com/api/../admin", "https://example.com/api") is False
+    assert check_resource_allowed("https://example.com/api/%2e%2e/admin", "https://example.com/api") is False
+    assert check_resource_allowed("https://example.com/api/%252e%252e/admin", "https://example.com/api") is False
+    assert check_resource_allowed("https://example.com/api\\..\\admin", "https://example.com/api") is False
+    assert check_resource_allowed("https://example.com/api/v1#frag", "https://example.com/api") is False
+    assert check_resource_allowed("", "") is False
+    assert check_resource_allowed("/api/v1", "/api") is False
+    assert check_resource_allowed("https://example.com/api/sub/../v1", "https://example.com/api") is True
+
+    with pytest.raises(ValueError, match="bool"):
+        calculate_token_expiry(True)
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_token_expiry(-5)
+    assert calculate_token_expiry("60") is not None

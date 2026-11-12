@@ -1,9 +1,34 @@
 """Utilities for OAuth 2.0 Resource Indicators (RFC 8707) and PKCE (RFC 7636)."""
 
+import math
+import posixpath
 import time
-from urllib.parse import urlparse, urlsplit, urlunsplit
+from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 
 from pydantic import AnyUrl, HttpUrl
+
+
+def _normalize_resource_path(path: str) -> str | None:
+    """Normalize a URL path and ensure dot-segments cannot traverse out."""
+    decoded = path
+    for _ in range(5):
+        next_decoded = unquote(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    if "\\" in decoded or "\x00" in decoded:
+        return None
+    segments = [seg for seg in decoded.split("/") if seg]
+    if any(seg in (".", "..") for seg in segments):
+        # Resolve cleanly with posixpath, collapsing leading slashes
+        resolved = posixpath.normpath("/" + "/".join(segments))
+        if not resolved.startswith("/"):
+            resolved = "/" + resolved
+    else:
+        resolved = "/" + "/".join(segments) if segments else "/"
+    if resolved != "/" and not resolved.endswith("/"):
+        resolved += "/"
+    return resolved
 
 
 def resource_url_from_server_url(url: str | HttpUrl | AnyUrl) -> str:
@@ -47,18 +72,22 @@ def check_resource_allowed(requested_resource: str, configured_resource: str) ->
     requested = urlparse(requested_resource)
     configured = urlparse(configured_resource)
 
+    # Require absolute scheme and authority, and reject URL fragments per RFC 8707
+    if not requested.scheme or not requested.netloc or not configured.scheme or not configured.netloc:
+        return False
+    if requested.fragment or configured.fragment:
+        return False
+
     # Compare scheme, host, and port (origin)
     if requested.scheme.lower() != configured.scheme.lower() or requested.netloc.lower() != configured.netloc.lower():
         return False
 
-    # Normalize trailing slashes before comparison so that
-    # "/foo" and "/foo/" are treated as equivalent.
-    requested_path = requested.path
-    configured_path = configured.path
-    if not requested_path.endswith("/"):
-        requested_path += "/"
-    if not configured_path.endswith("/"):
-        configured_path += "/"
+    # Normalize trailing slashes and dot-segments before comparison so that
+    # "/foo" and "/foo/" match while "/api/../admin" cannot escape "/api/".
+    requested_path = _normalize_resource_path(requested.path)
+    configured_path = _normalize_resource_path(configured.path)
+    if requested_path is None or configured_path is None:
+        return False
 
     # Check hierarchical match: requested must start with configured path.
     # The trailing-slash normalization ensures "/api123/" won't match "/api/".
@@ -76,5 +105,12 @@ def calculate_token_expiry(expires_in: int | str | None) -> float | None:
     """
     if expires_in is None:
         return None  # pragma: no cover
+    if isinstance(expires_in, bool):
+        raise ValueError("expires_in must be an integer or numeric string, not bool")
+    if isinstance(expires_in, float) and not math.isfinite(expires_in):
+        raise ValueError("expires_in must be finite")
     # Defensive: handle servers that return expires_in as string
-    return time.time() + int(expires_in)
+    seconds = int(expires_in)
+    if seconds < 0:
+        raise ValueError("expires_in must be non-negative")
+    return time.time() + seconds
