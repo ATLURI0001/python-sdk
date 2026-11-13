@@ -4,10 +4,11 @@ These utilities are primarily intended for client-side usage to properly display
 human-readable names in user interfaces in a spec-compliant way.
 """
 
+from typing import Any
 from mcp_types import Implementation, Prompt, Resource, ResourceTemplate, Tool
 
 
-def get_display_name(obj: Tool | Resource | Prompt | ResourceTemplate | Implementation) -> str:
+def get_display_name(obj: Tool | Resource | Prompt | ResourceTemplate | Implementation | dict[str, Any] | None) -> str:
     """Get the display name for an MCP object with proper precedence.
 
     This is a client-side utility function designed to help MCP clients display
@@ -32,15 +33,40 @@ def get_display_name(obj: Tool | Resource | Prompt | ResourceTemplate | Implemen
     Returns:
         The display name to use for UI presentation
     """
+    if obj is None:
+        return ""
+
+    if isinstance(obj, dict):
+        title = obj.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+        annotations = obj.get("annotations")
+        if isinstance(annotations, dict):
+            annot_title = annotations.get("title")
+            if isinstance(annot_title, str) and annot_title.strip():
+                return annot_title.strip()
+        name = obj.get("name")
+        return str(name).strip() if name is not None else ""
+
     if isinstance(obj, Tool):
         # Tools have special precedence: title > annotations.title > name
-        if hasattr(obj, "title") and obj.title is not None:
-            return obj.title
-        if obj.annotations and hasattr(obj.annotations, "title") and obj.annotations.title is not None:
-            return obj.annotations.title
-        return obj.name
+        title = getattr(obj, "title", None)
+        if title is not None and str(title).strip():
+            return str(title).strip()
+        annotations = getattr(obj, "annotations", None)
+        if annotations is not None:
+            if hasattr(annotations, "title") and annotations.title is not None and str(annotations.title).strip():
+                return str(annotations.title).strip()
+            if isinstance(annotations, dict):
+                annot_title = annotations.get("title")
+                if annot_title is not None and str(annot_title).strip():
+                    return str(annot_title).strip()
+        name = getattr(obj, "name", "")
+        return str(name).strip() if name is not None else ""
     else:
         # All other objects: title > name
-        if hasattr(obj, "title") and obj.title is not None:
-            return obj.title
-        return obj.name
+        title = getattr(obj, "title", None)
+        if title is not None and str(title).strip():
+            return str(title).strip()
+        name = getattr(obj, "name", "")
+        return str(name).strip() if name is not None else ""
