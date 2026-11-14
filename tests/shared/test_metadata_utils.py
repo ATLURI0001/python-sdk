@@ -1,7 +1,7 @@
 import pytest
 from mcp_types import Implementation, Prompt, Resource, Tool, ToolAnnotations
 
-from mcp.shared.metadata_utils import get_display_name
+from mcp.shared.metadata_utils import get_description, get_display_name, is_valid_mcp_name
 
 
 def test_get_display_name_tool_precedence():
@@ -56,3 +56,54 @@ def test_get_display_name_other_objects():
 
     impl = Implementation(name="impl_name", version="1.0.0")
     assert get_display_name(impl) == "impl_name"
+
+
+def test_get_description_precedence_and_fallbacks():
+    assert get_description(None) == ""
+    assert get_description({"description": "Primary desc"}) == "Primary desc"
+    assert get_description({"description": "   ", "annotations": {"description": "Annot desc"}}) == "Annot desc"
+    assert get_description({"annotations": {"description": "Only Annot"}}) == "Only Annot"
+
+    tool = Tool(
+        name="tool_desc",
+        description="Tool Description",
+        inputSchema={"type": "object"},
+    )
+    assert get_description(tool) == "Tool Description"
+
+    tool_blank = Tool(
+        name="tool_desc",
+        description="   ",
+        inputSchema={"type": "object"},
+    )
+    assert get_description(tool_blank) == ""
+
+    class CustomAnnot:
+        description = "Annot Description"
+
+    class CustomObject:
+        description = "   "
+        annotations = CustomAnnot()
+
+    assert get_description(CustomObject()) == "Annot Description"
+
+
+def test_is_valid_mcp_name():
+    assert is_valid_mcp_name("valid_name") is True
+    assert is_valid_mcp_name("tool-123") is True
+    assert is_valid_mcp_name("a" * 64) is True
+
+    # Too long
+    assert is_valid_mcp_name("a" * 65) is False
+
+    # Empty or non-string
+    assert is_valid_mcp_name("") is False
+    assert is_valid_mcp_name("   ") is False
+    assert is_valid_mcp_name(None) is False
+    assert is_valid_mcp_name(123) is False
+
+    # Whitespace or control characters inside
+    assert is_valid_mcp_name("name with space") is False
+    assert is_valid_mcp_name("name\nwith_newline") is False
+    assert is_valid_mcp_name("name\x00with_null") is False
+
