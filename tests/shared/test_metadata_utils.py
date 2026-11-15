@@ -1,7 +1,14 @@
 import pytest
 from mcp_types import Implementation, Prompt, Resource, Tool, ToolAnnotations
 
-from mcp.shared.metadata_utils import get_description, get_display_name, is_valid_mcp_name
+from mcp.shared.metadata_utils import (
+    format_mcp_summary,
+    get_description,
+    get_display_name,
+    get_mime_type,
+    is_valid_mcp_name,
+    sanitize_mcp_name,
+)
 
 
 def test_get_display_name_tool_precedence():
@@ -106,4 +113,33 @@ def test_is_valid_mcp_name():
     assert is_valid_mcp_name("name with space") is False
     assert is_valid_mcp_name("name\nwith_newline") is False
     assert is_valid_mcp_name("name\x00with_null") is False
+
+
+def test_sanitize_mcp_name():
+    assert sanitize_mcp_name("valid-tool_name") == "valid-tool_name"
+    assert sanitize_mcp_name("tool with spaces and / slash") == "tool_with_spaces_and___slash"
+    assert sanitize_mcp_name("   ") == "item"
+    assert sanitize_mcp_name(None, fallback="default_tool") == "default_tool"
+    assert len(sanitize_mcp_name("x" * 100)) == 64
+
+
+def test_get_mime_type_and_format_summary():
+    # Direct dictionary mimeType
+    assert get_mime_type({"mimeType": "TEXT/PLAIN"}) == "text/plain"
+    assert get_mime_type({"mime_type": "Application/JSON"}) == "application/json"
+    assert get_mime_type({"annotations": {"mimeType": "image/png"}}) == "image/png"
+    assert get_mime_type(None) == ""
+
+    # Summary formatting
+    summary = format_mcp_summary({
+        "name": "read_data",
+        "title": "Read Data Resource",
+        "description": "Reads sensor data",
+        "mimeType": "application/json",
+    })
+    assert summary["name"] == "read_data"
+    assert summary["display_name"] == "Read Data Resource"
+    assert summary["description"] == "Reads sensor data"
+    assert summary["mime_type"] == "application/json"
+    assert format_mcp_summary(None)["display_name"] == ""
 
