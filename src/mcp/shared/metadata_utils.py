@@ -120,3 +120,70 @@ def is_valid_mcp_name(name: Any) -> bool:
         if ch.isspace() or ord(ch) < 32 or ord(ch) == 127:
             return False
     return True
+
+
+def sanitize_mcp_name(name: Any, fallback: str = "item") -> str:
+    """Sanitize arbitrary input into a valid MCP name conforming to protocol constraints.
+
+    Replaces invalid characters and whitespace with underscores and truncates to 64 chars.
+    """
+    if not isinstance(name, str) or not name.strip():
+        return fallback[:64] if fallback else "item"
+    cleaned = []
+    for ch in name.strip():
+        if ch.isspace() or ord(ch) < 32 or ord(ch) == 127 or ch in ('/', '\\', ':', '*', '?', '"', '<', '>', '|'):
+            cleaned.append("_")
+        else:
+            cleaned.append(ch)
+    result = "".join(cleaned).strip("_")
+    if not result:
+        return fallback[:64] if fallback else "item"
+    return result[:64]
+
+
+def get_mime_type(obj: Any) -> str:
+    """Extract and normalize the MIME type for an MCP object or resource representation."""
+    if obj is None:
+        return ""
+    if isinstance(obj, dict):
+        mime = obj.get("mimeType") or obj.get("mime_type")
+        if isinstance(mime, str) and mime.strip():
+            return mime.strip().lower()
+        annotations = obj.get("annotations")
+        if isinstance(annotations, dict):
+            annot_mime = annotations.get("mimeType") or annotations.get("mime_type")
+            if isinstance(annot_mime, str) and annot_mime.strip():
+                return annot_mime.strip().lower()
+        return ""
+
+    mime = getattr(obj, "mimeType", None) or getattr(obj, "mime_type", None)
+    if mime is not None and str(mime).strip():
+        return str(mime).strip().lower()
+
+    annotations = getattr(obj, "annotations", None)
+    if annotations is not None:
+        annot_mime = getattr(annotations, "mimeType", None) or getattr(annotations, "mime_type", None)
+        if annot_mime is not None and str(annot_mime).strip():
+            return str(annot_mime).strip().lower()
+        if isinstance(annotations, dict):
+            annot_mime = annotations.get("mimeType") or annotations.get("mime_type")
+            if annot_mime is not None and str(annot_mime).strip():
+                return str(annot_mime).strip().lower()
+
+    return ""
+
+
+def format_mcp_summary(obj: Any) -> dict[str, str]:
+    """Generate a consistent metadata dictionary for display and telemetry."""
+    raw_name = ""
+    if isinstance(obj, dict):
+        raw_name = str(obj.get("name") or "")
+    elif obj is not None:
+        raw_name = str(getattr(obj, "name", "") or "")
+
+    return {
+        "name": raw_name.strip(),
+        "display_name": get_display_name(obj),
+        "description": get_description(obj),
+        "mime_type": get_mime_type(obj),
+    }
