@@ -4,6 +4,7 @@ These utilities are primarily intended for client-side usage to properly display
 human-readable names in user interfaces in a spec-compliant way.
 """
 
+import re
 from typing import Any
 from mcp_types import Implementation, Prompt, Resource, ResourceTemplate, Tool
 
@@ -187,3 +188,82 @@ def format_mcp_summary(obj: Any) -> dict[str, str]:
         "description": get_description(obj),
         "mime_type": get_mime_type(obj),
     }
+
+
+def is_valid_request_id(id_val: Any) -> bool:
+    """Validate whether an identifier meets JSON-RPC 2.0 / MCP request ID constraints.
+
+    Must be an integer (excluding bools) or a non-empty string with length <= 128 characters.
+    """
+    if isinstance(id_val, bool):
+        return False
+    if isinstance(id_val, int):
+        return True
+    if isinstance(id_val, str):
+        trimmed = id_val.strip()
+        return bool(trimmed) and len(trimmed) <= 128
+    return False
+
+
+def normalize_request_id(id_val: Any) -> int | str | None:
+    """Normalize a JSON-RPC / MCP request identifier.
+
+    Returns the integer or trimmed string if valid, or None if the input is malformed.
+    """
+    if isinstance(id_val, bool):
+        return None
+    if isinstance(id_val, int):
+        return id_val
+    if isinstance(id_val, str):
+        trimmed = id_val.strip()
+        if trimmed and len(trimmed) <= 128:
+            return trimmed
+    return None
+
+
+def is_valid_progress_token(token: Any) -> bool:
+    """Validate whether a token meets MCP progress token constraints.
+
+    Must be an integer (excluding bool) or non-empty string <= 128 chars without control characters.
+    """
+    if isinstance(token, bool):
+        return False
+    if isinstance(token, int):
+        return True
+    if isinstance(token, str):
+        trimmed = token.strip()
+        if not trimmed or len(trimmed) > 128:
+            return False
+        return not any(ord(c) < 32 or ord(c) == 127 for c in trimmed)
+    return False
+
+
+def sanitize_progress_token(token: Any, fallback_prefix: str = "token") -> int | str:
+    """Sanitize arbitrary input into a valid MCP progress token."""
+    if isinstance(token, bool):
+        return f"{fallback_prefix}_0"
+    if isinstance(token, int):
+        return token
+    if isinstance(token, str):
+        cleaned = [c for c in token.strip() if ord(c) >= 32 and ord(c) != 127]
+        result = "".join(cleaned).strip()
+        if result:
+            return result[:128]
+    return f"{fallback_prefix}_auto"
+
+
+def is_valid_protocol_version(version: Any) -> bool:
+    """Validate whether a version string matches standard MCP date-based (YYYY-MM-DD) or semver format."""
+    if not isinstance(version, str):
+        return False
+    v = version.strip()
+    if not v or len(v) > 32:
+        return False
+    # Date-based: YYYY-MM-DD
+    if re.fullmatch(r"^\d{4}-\d{2}-\d{2}$", v):
+        return True
+    # Semver: X.Y.Z
+    if re.fullmatch(r"^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$", v):
+        return True
+    return False
+

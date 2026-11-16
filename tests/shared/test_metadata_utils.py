@@ -7,7 +7,12 @@ from mcp.shared.metadata_utils import (
     get_display_name,
     get_mime_type,
     is_valid_mcp_name,
+    is_valid_progress_token,
+    is_valid_protocol_version,
+    is_valid_request_id,
+    normalize_request_id,
     sanitize_mcp_name,
+    sanitize_progress_token,
 )
 
 
@@ -142,4 +147,70 @@ def test_get_mime_type_and_format_summary():
     assert summary["description"] == "Reads sensor data"
     assert summary["mime_type"] == "application/json"
     assert format_mcp_summary(None)["display_name"] == ""
+
+
+def test_request_id_validation_and_normalization():
+    # Valid integer IDs
+    assert is_valid_request_id(0) is True
+    assert is_valid_request_id(42) is True
+    assert is_valid_request_id(-1) is True
+    assert normalize_request_id(42) == 42
+
+    # Booleans are not valid request IDs
+    assert is_valid_request_id(True) is False
+    assert is_valid_request_id(False) is False
+    assert normalize_request_id(True) is None
+
+    # Valid string IDs
+    assert is_valid_request_id("req_123") is True
+    assert is_valid_request_id("a" * 128) is True
+    assert normalize_request_id("  req_abc  ") == "req_abc"
+
+    # Invalid string IDs
+    assert is_valid_request_id("") is False
+    assert is_valid_request_id("   ") is False
+    assert is_valid_request_id("a" * 129) is False
+    assert normalize_request_id("   ") is None
+
+    # Invalid object types
+    assert is_valid_request_id(None) is False
+    assert is_valid_request_id(3.14) is False
+    assert is_valid_request_id({"id": 1}) is False
+    assert normalize_request_id(None) is None
+
+
+def test_progress_token_validation_and_sanitization():
+    # Integer tokens
+    assert is_valid_progress_token(101) is True
+    assert is_valid_progress_token(True) is False
+    assert sanitize_progress_token(101) == 101
+
+    # String tokens
+    assert is_valid_progress_token("progress-token-1") is True
+    assert is_valid_progress_token("token\x00invalid") is False
+    assert sanitize_progress_token(" token_clean\x1f ") == "token_clean"
+
+    # Fallback on boolean or None
+    assert sanitize_progress_token(True, fallback_prefix="prog") == "prog_0"
+    assert sanitize_progress_token(None, fallback_prefix="prog") == "prog_auto"
+
+
+def test_protocol_version_validation():
+    # Valid date-based versions
+    assert is_valid_protocol_version("2024-11-05") is True
+    assert is_valid_protocol_version("2025-03-26") is True
+    assert is_valid_protocol_version("2026-07-28") is True
+
+    # Valid semver versions
+    assert is_valid_protocol_version("1.0.0") is True
+    assert is_valid_protocol_version("0.1.0-alpha.1") is True
+
+    # Invalid version formats
+    assert is_valid_protocol_version("") is False
+    assert is_valid_protocol_version("   ") is False
+    assert is_valid_protocol_version("2024-11") is False
+    assert is_valid_protocol_version("v1.0") is False
+    assert is_valid_protocol_version(None) is False
+    assert is_valid_protocol_version(20250326) is False
+
 
