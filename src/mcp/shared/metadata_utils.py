@@ -267,3 +267,58 @@ def is_valid_protocol_version(version: Any) -> bool:
         return True
     return False
 
+
+def is_valid_uri(uri: Any) -> bool:
+    """Validate whether a URI string complies with MCP resource URI requirements.
+
+    Must be a string with a valid RFC 3986 scheme, no ASCII control characters,
+    and length <= 2048 characters.
+    """
+    if not isinstance(uri, str):
+        return False
+    u = uri.strip()
+    if not u or len(u) > 2048:
+        return False
+    if any(ord(c) < 32 or ord(c) == 127 for c in u):
+        return False
+    match = re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", u)
+    return match is not None
+
+
+def normalize_uri(uri: Any) -> str | None:
+    """Normalize a resource URI by trimming and lowercasing the scheme.
+
+    Returns the normalized URI string, or None if the URI is invalid.
+    """
+    if not is_valid_uri(uri):
+        return None
+    u = uri.strip()
+    colon_idx = u.find(":")
+    scheme = u[:colon_idx].lower()
+    rest = u[colon_idx:]
+    return f"{scheme}{rest}"
+
+
+def is_valid_cursor(cursor: Any) -> bool:
+    """Validate whether a pagination cursor meets MCP pagination constraints.
+
+    Must be a non-empty string <= 512 characters without control characters.
+    """
+    if not isinstance(cursor, str):
+        return False
+    c = cursor.strip()
+    if not c or len(c) > 512:
+        return False
+    return not any(ord(ch) < 32 or ord(ch) == 127 for ch in c)
+
+
+def sanitize_cursor(cursor: Any) -> str | None:
+    """Sanitize arbitrary input into a safe MCP pagination cursor."""
+    if not isinstance(cursor, str):
+        return None
+    cleaned = [c for c in cursor.strip() if ord(c) >= 32 and ord(c) != 127]
+    result = "".join(cleaned).strip()
+    if result:
+        return result[:512]
+    return None
+

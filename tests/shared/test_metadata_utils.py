@@ -10,6 +10,10 @@ from mcp.shared.metadata_utils import (
     is_valid_progress_token,
     is_valid_protocol_version,
     is_valid_request_id,
+    is_valid_uri,
+    normalize_uri,
+    is_valid_cursor,
+    sanitize_cursor,
     normalize_request_id,
     sanitize_mcp_name,
     sanitize_progress_token,
@@ -212,5 +216,47 @@ def test_protocol_version_validation():
     assert is_valid_protocol_version("v1.0") is False
     assert is_valid_protocol_version(None) is False
     assert is_valid_protocol_version(20250326) is False
+
+
+def test_resource_uri_validation_and_normalization():
+    # Valid URIs
+    assert is_valid_uri("file:///home/user/doc.txt") is True
+    assert is_valid_uri("postgres://localhost:5432/db") is True
+    assert is_valid_uri("custom+protocol://resource-id") is True
+    assert is_valid_uri("HTTP://example.com/api") is True
+
+    # Normalization
+    assert normalize_uri("  HTTP://Example.COM/api  ") == "http://Example.COM/api"
+    assert normalize_uri("FILE:///path/file.py") == "file:///path/file.py"
+
+    # Invalid URIs
+    assert is_valid_uri("") is False
+    assert is_valid_uri("   ") is False
+    assert is_valid_uri("no-scheme-path/file.txt") is False
+    assert is_valid_uri("123scheme://invalid") is False
+    assert is_valid_uri("file://path\x00with-null") is False
+    assert is_valid_uri(None) is False
+    assert normalize_uri("invalid-uri") is None
+
+
+def test_pagination_cursor_validation_and_sanitization():
+    # Valid cursors
+    assert is_valid_cursor("cursor_abc123") is True
+    assert is_valid_cursor("eyJuZXh0UGFnZSI6Mn0=") is True
+
+    # Invalid cursors
+    assert is_valid_cursor("") is False
+    assert is_valid_cursor("   ") is False
+    assert is_valid_cursor(None) is False
+    assert is_valid_cursor(12345) is False
+    assert is_valid_cursor("cursor\x07bell") is False
+    assert is_valid_cursor("c" * 513) is False
+
+    # Sanitization
+    assert sanitize_cursor("  cursor_token_123  ") == "cursor_token_123"
+    assert sanitize_cursor("token\x00clean") == "tokenclean"
+    assert sanitize_cursor("") is None
+    assert sanitize_cursor(None) is None
+    assert sanitize_cursor(123) is None
 
 
