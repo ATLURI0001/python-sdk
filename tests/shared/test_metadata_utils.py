@@ -17,6 +17,8 @@ from mcp.shared.metadata_utils import (
     normalize_request_id,
     sanitize_mcp_name,
     sanitize_progress_token,
+    validate_input_schema,
+    inspect_schema_diagnostics,
 )
 
 
@@ -258,5 +260,51 @@ def test_pagination_cursor_validation_and_sanitization():
     assert sanitize_cursor("") is None
     assert sanitize_cursor(None) is None
     assert sanitize_cursor(123) is None
+
+
+def test_validate_input_schema_and_diagnostics():
+    valid_schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "nested": {
+                "type": "object",
+                "properties": {
+                    "age": {"type": "integer"}
+                }
+            }
+        },
+        "required": ["name"]
+    }
+    is_valid, err = validate_input_schema(valid_schema)
+    assert is_valid is True
+    assert err is None
+
+    diag = inspect_schema_diagnostics(valid_schema)
+    assert diag["valid"] is True
+    assert diag["property_count"] == 2
+    assert diag["required_count"] == 1
+    assert diag["max_depth"] == 2
+
+    # Malformed schema (non-dict)
+    is_valid, err = validate_input_schema("invalid")
+    assert is_valid is False
+    assert "must be a JSON object" in err
+    bad_diag = inspect_schema_diagnostics("invalid")
+    assert bad_diag["valid"] is False
+
+    # Top-level type not object
+    is_valid, err = validate_input_schema({"type": "string"})
+    assert is_valid is False
+    assert "must be 'object'" in err
+
+    # Properties not dict
+    is_valid, err = validate_input_schema({"type": "object", "properties": [1, 2]})
+    assert is_valid is False
+
+    # Required not list of strings
+    is_valid, err = validate_input_schema({"type": "object", "required": [123]})
+    assert is_valid is False
+
 
 

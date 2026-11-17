@@ -322,3 +322,70 @@ def sanitize_cursor(cursor: Any) -> str | None:
         return result[:512]
     return None
 
+
+def validate_input_schema(schema: Any) -> tuple[bool, str | None]:
+    """Validate whether an input schema conforms to basic JSON Schema requirements for MCP tools.
+
+    Returns:
+        (True, None) if valid, or (False, error_diagnostic) if malformed.
+    """
+    if not isinstance(schema, dict):
+        return False, "Input schema must be a JSON object (dict)"
+    schema_type = schema.get("type")
+    if schema_type != "object":
+        return False, f"Input schema top-level type must be 'object', got '{schema_type}'"
+    properties = schema.get("properties")
+    if properties is not None and not isinstance(properties, dict):
+        return False, "Schema 'properties' must be a dictionary mapping field names to sub-schemas"
+    required = schema.get("required")
+    if required is not None:
+        if not isinstance(required, (list, tuple)):
+            return False, "Schema 'required' must be a list of required property names"
+        if any(not isinstance(r, str) for r in required):
+            return False, "All elements in 'required' must be strings"
+    return True, None
+
+
+def inspect_schema_diagnostics(schema: Any) -> dict[str, Any]:
+    """Generate diagnostic metrics for an MCP tool input schema.
+
+    Returns:
+        Dictionary containing property count, required count, max nesting depth, and validity status.
+    """
+    is_valid, err = validate_input_schema(schema)
+    if not is_valid:
+        return {
+            "valid": False,
+            "error": err,
+            "property_count": 0,
+            "required_count": 0,
+            "max_depth": 0,
+        }
+
+    properties = schema.get("properties") or {}
+    required = schema.get("required") or []
+
+    def _get_depth(node: Any, current_depth: int = 1) -> int:
+        if not isinstance(node, dict) or current_depth > 16:
+            return current_depth
+        sub_props = node.get("properties")
+        if isinstance(sub_props, dict) and sub_props:
+            return max(_get_depth(sub, current_depth + 1) for sub in sub_props.values())
+        items = node.get("items")
+        if isinstance(items, dict):
+            return _get_depth(items, current_depth + 1)
+        return current_depth
+
+    max_depth = 1
+    if properties:
+        max_depth = max(_get_depth(p, 1) for p in properties.values())
+
+    return {
+        "valid": True,
+        "error": None,
+        "property_count": len(properties),
+        "required_count": len(required),
+        "max_depth": max_depth,
+    }
+
+
